@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estoque de TI</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1100px; margin: 30px auto; padding: 0 16px; color: #222; }
+        h1 { margin-bottom: 6px; }
+        .linha { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+        input, select, button { padding: 8px; font-size: 14px; }
+        input { flex: 1; min-width: 130px; }
+        button { cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background: #eee; }
+        .acoes button { margin-right: 4px; }
+        #mensagem { min-height: 20px; margin: 10px 0; }
+        a { color: inherit; }
+    </style>
+</head>
+<body>
+    <h1>Estoque de TI</h1>
+    <p><a href="/apidocs/" target="_blank">Abrir Swagger</a></p>
+
+    <h3>Cadastro / edição</h3>
+    <input type="hidden" id="id">
+    <div class="linha">
+        <input id="nome" placeholder="Nome">
+        <input id="descricao" placeholder="Descrição">
+        <input id="tipo" placeholder="Tipo">
+        <input id="marca" placeholder="Marca">
+        <input id="quantidade" type="number" min="0" placeholder="Quantidade">
+        <input id="valor" type="number" min="0" step="0.01" placeholder="Valor">
+    </div>
+    <div class="linha">
+        <button onclick="salvar()">Salvar</button>
+        <button onclick="limparFormulario()">Limpar</button>
+    </div>
+
+    <h3>Consulta</h3>
+    <div class="linha">
+        <select id="campoBusca">
+            <option value="nome">Nome</option>
+            <option value="tipo">Tipo</option>
+            <option value="marca">Marca</option>
+        </select>
+        <input id="termoBusca" placeholder="Digite para pesquisar">
+        <button onclick="buscar()">Buscar</button>
+        <button onclick="listarProdutos()">Mostrar todos</button>
+    </div>
+
+    <div id="mensagem"></div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nome</th>
+                <th>Descrição</th>
+                <th>Tipo</th>
+                <th>Marca</th>
+                <th>Qtd.</th>
+                <th>Valor</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody id="lista"></tbody>
+    </table>
+
+    <script>
+        const mensagem = document.getElementById('mensagem');
+
+        function mostrarMensagem(texto) {
+            mensagem.textContent = texto;
+        }
+
+        async function requisicao(url, opcoes = {}) {
+            const resposta = await fetch(url, opcoes);
+            const dados = await resposta.json();
+            if (!resposta.ok) throw new Error(dados.mensagem || 'Erro na requisição');
+            return dados;
+        }
+
+        function renderizar(produtos) {
+            const lista = document.getElementById('lista');
+            lista.innerHTML = '';
+
+            produtos.forEach(produto => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${produto.id}</td>
+                    <td>${produto.nome}</td>
+                    <td>${produto.descricao}</td>
+                    <td>${produto.tipo}</td>
+                    <td>${produto.marca}</td>
+                    <td>${produto.quantidade}</td>
+                    <td>R$ ${Number(produto.valor).toFixed(2)}</td>
+                    <td class="acoes">
+                        <button onclick='editar(${JSON.stringify(produto)})'>Editar</button>
+                        <button onclick="excluirProduto(${produto.id})">Excluir</button>
+                    </td>`;
+                lista.appendChild(tr);
+            });
+        }
+
+        async function listarProdutos() {
+            try {
+                renderizar(await requisicao('/produtos'));
+                mostrarMensagem('');
+            } catch (erro) {
+                mostrarMensagem(erro.message);
+            }
+        }
+
+        async function buscar() {
+            const campo = document.getElementById('campoBusca').value;
+            const termo = document.getElementById('termoBusca').value.trim();
+
+            if (!termo) return listarProdutos();
+
+            try {
+                const produtos = await requisicao(`/produtos/${campo}/${encodeURIComponent(termo)}`);
+                renderizar(produtos);
+                mostrarMensagem(`${produtos.length} produto(s) encontrado(s).`);
+            } catch (erro) {
+                mostrarMensagem(erro.message);
+            }
+        }
+
+        async function salvar() {
+            const id = document.getElementById('id').value;
+            const produto = {
+                nome: document.getElementById('nome').value,
+                descricao: document.getElementById('descricao').value,
+                tipo: document.getElementById('tipo').value,
+                marca: document.getElementById('marca').value,
+                quantidade: document.getElementById('quantidade').value,
+                valor: document.getElementById('valor').value
+            };
+
+            try {
+                const dados = await requisicao(id ? `/produtos/${id}` : '/produtos', {
+                    method: id ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(produto)
+                });
+                mostrarMensagem(dados.mensagem);
+                limparFormulario();
+                listarProdutos();
+            } catch (erro) {
+                mostrarMensagem(erro.message);
+            }
+        }
+
+        function editar(produto) {
+            document.getElementById('id').value = produto.id;
+            document.getElementById('nome').value = produto.nome;
+            document.getElementById('descricao').value = produto.descricao;
+            document.getElementById('tipo').value = produto.tipo;
+            document.getElementById('marca').value = produto.marca;
+            document.getElementById('quantidade').value = produto.quantidade;
+            document.getElementById('valor').value = produto.valor;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function excluirProduto(id) {
+            if (!confirm('Deseja excluir este produto?')) return;
+
+            try {
+                const dados = await requisicao(`/produtos/${id}`, { method: 'DELETE' });
+                mostrarMensagem(dados.mensagem);
+                listarProdutos();
+            } catch (erro) {
+                mostrarMensagem(erro.message);
+            }
+        }
+
+        function limparFormulario() {
+            ['id', 'nome', 'descricao', 'tipo', 'marca', 'quantidade', 'valor'].forEach(campo => {
+                document.getElementById(campo).value = '';
+            });
+        }
+
+        listarProdutos();
+    </script>
+</body>
+</html>
